@@ -1,21 +1,15 @@
 pipeline {
     agent {
         docker {
-            image 'maven:3.9.6-eclipse-temurin-17'
+            // This image is more compatible with Jenkins user permissions
+            image 'pangeaim/maven-docker:latest' 
             args '--user root -v /var/run/docker.sock:/var/run/docker.sock'
         }
     }
     
-    // This forces the container to use its own Java 17, not the host's Java 11
-    environment {
-        JAVA_HOME = '/opt/java/openjdk'
-        PATH = "${env.JAVA_HOME}/bin:${env.PATH}"
-    }
-
     stages {
         stage('Build and Test') {
             steps {
-                sh 'java -version' // This will confirm we are on 17
                 sh 'cd java-maven-sonar-argocd-helm-k8s/spring-boot-app && mvn clean package'
             }
         }
@@ -37,9 +31,7 @@ pipeline {
             }
             steps {
                 script {
-                    sh 'apt-get update && apt-get install -y docker.io'
                     sh 'cd java-maven-sonar-argocd-helm-k8s/spring-boot-app && docker build -t ${DOCKER_IMAGE} .'
-                    
                     docker.withRegistry('https://index.docker.io/v1/', "docker-cred") {
                         docker.image("${DOCKER_IMAGE}").push()
                     }
@@ -51,15 +43,19 @@ pipeline {
             environment {
                 GIT_REPO_NAME = "Jenkins-Zero-To-Hero"
                 GIT_USER_NAME = "saitejakavuru"
+                MY_IMAGE = "saitejak19/ultimate-cicd"
             }
             steps {
                 withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
                     sh '''
                         git config --global --add safe.directory '*'
-                        git config user.email "2291943+saitejakavuru@users.noreply.github.com"
+                        
+                        # Use your GitHub no-reply email to avoid the privacy block
+                        git config user.email "saitejakavuru@users.noreply.github.com"
                         git config user.name "saitejakavuru"
                         
-                        sed -i "s|image: abhishekf5/ultimate-cicd:.*|image: ${MY_DOCKER_REPO}:${BUILD_NUMBER}|g" java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
+                        # This replaces the TUTOR repo with YOUR repo and adds the tag
+                        sed -i "s|image: abhishekf5/ultimate-cicd:.*|image: ${MY_IMAGE}:${BUILD_NUMBER}|g" java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
                         
                         git add java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
                         git commit -m "Update deployment image to version ${BUILD_NUMBER}"
